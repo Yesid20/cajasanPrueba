@@ -2,219 +2,240 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
-from passlib.context import CryptContext
-import secrets
-
-#
-ACCESS_EXPIRE_MINUTES = 3
-REFRESH_EXPIRE_DAYS = 1
-
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from jose import JWTError, jwt
+import os
+ 
+SECRET_KEY = "prueba-superada-2026"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 3
+REFRESH_TOKEN_EXPIRE_DAYS = 1
+ 
 bearer = HTTPBearer()
-
-app = FastAPI(title="Products API - Auth opaco (no SECRET_KEY)")
-
-# 
+ 
+app = FastAPI(title="Products API - Auth JWT")
+ 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+ 
 class Item(BaseModel):
     id: int
     name: str
     category: str
     price: float
     stock: int
-
+ 
     @field_validator("price")
     @classmethod
     def price_non_negative(cls, v):
         if v < 0:
             raise ValueError("price must be >= 0")
         return v
-
+ 
     @field_validator("stock")
     @classmethod
     def stock_non_negative(cls, v):
         if v < 0:
             raise ValueError("stock must be >= 0")
         return v
-
-class UserInDB(BaseModel):
+ 
+class User(BaseModel):
     username: str
-    hashed_password: str
     admin: bool
     role: str
-
+ 
+class UserInDB(User):
+    password: str
+ 
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str
     expires_in: int
-
+ 
 class RefreshRequest(BaseModel):
     refresh_token: str
-
+ 
 class LogoutRequest(BaseModel):
     refresh_token: str
-
-#
-def hash_password(pw: str) -> str:
-    return pwd_ctx.hash(pw)
-
+ 
 users_db: Dict[str, UserInDB] = {
-    "alice": UserInDB(username="alice", hashed_password=hash_password("alicepass"), admin=True, role="admin"),
-    "bob":   UserInDB(username="bob",   hashed_password=hash_password("bobpass"),   admin=False, role="user"),
+    "alice": UserInDB(username="alice", password="alicepass", admin=True, role="admin"),
+    "bob":   UserInDB(username="bob",   password="bobpass",   admin=False, role="user"),
 }
-
-#
-access_store: Dict[str, Dict] = {}
-refresh_store: Dict[str, Dict] = {}
-
-#
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
-
+ 
+revoked_tokens: set = set()
+ 
+items: List[Item] = [
+    Item(id=1, name="Camiseta", category="Ropa", price=1200.0, stock=25),
+    Item(id=2, name="Pantalon",  category="Ropa",  price=25.0,   stock=50),
+]
+ 
 def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
     user = users_db.get(username)
     if not user:
         return None
-    if not verify_password(password, user.hashed_password):
+    if user.password != password:
         return None
     return user
-
-def create_access_token_opaque(username: str, role: str) -> (str, datetime):
-    token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(minutes=ACCESS_EXPIRE_MINUTES)
-    access_store[token] = {"username": username, "role": role, "expires_at": expires_at}
-    return token, expires_at
-
-def create_refresh_token_opaque(username: str) -> (str, datetime):
-    token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(days=REFRESH_EXPIRE_DAYS)
-    refresh_store[token] = {"username": username, "expires_at": expires_at}
-    return token, expires_at
-
-def validate_access_token_opaque(token: str) -> Optional[Dict]:
-    data = access_store.get(token)
-    if not data:
-        return None
-    if data["expires_at"] < datetime.utcnow():
-        access_store.pop(token, None)
-        return None
-    return data
-
-def validate_refresh_token_opaque(token: str) -> Optional[str]:
-    data = refresh_store.get(token)
-    if not data:
-        return None
-    if data["expires_at"] < datetime.utcnow():
-        refresh_store.pop(token, None)
-        return None
-    return data["username"]
-
-def revoke_refresh_token(token: str):
-    refresh_store.pop(token, None)
-
-def revoke_access_token(token: str):
-    access_store.pop(token, None)
+ 
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
-# ---------------- Dependencias ----------------
-def get_current_user_opaque(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> UserInDB:
-    token = creds.credentials
-    data = validate_access_token_opaque(token)
-    if not data:
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+ 
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    to_encode.update({"exp": expire, "type": "refresh"})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+ 
+def verify_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+        return payload
+    except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
-    username = data["username"]
+ 
+def get_current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> User:
+    token = creds.credentials
+    payload = verify_token(token)
+    
+    username = payload.get("sub")
     user = users_db.get(username)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
-    return user
-
-def require_admin(user: UserInDB = Depends(get_current_user_opaque)):
+    
+    return User(username=user.username, admin=user.admin, role=user.role)
+ 
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Requiere que el usuario sea admin"""
     if not user.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere privilegios de administrador")
     return user
-
-#
+ 
 @app.post("/auth/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contraseña incorrectos")
-
-    access_token, access_exp = create_access_token_opaque(user.username, user.role)
-    refresh_token, refresh_exp = create_refresh_token_opaque(user.username)
-    expires_in = int((access_exp - datetime.utcnow()).total_seconds())
-
+ 
+    # Crear tokens JWT
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role},
+        expires_delta=access_token_expires
+    )
+    
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_refresh_token(
+        data={"sub": user.username},
+        expires_delta=refresh_token_expires
+    )
+ 
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
-        expires_in=expires_in
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60  
     )
-
+ 
 @app.post("/auth/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def refresh_token(req: RefreshRequest):
     """
-    Refresh: valida refresh token opaco, rota refresh token (revoca el viejo y emite uno nuevo),
-    emite nuevo access token opaco.
+    Refresh: valida refresh_token JWT, emite nuevo access_token y nuevo refresh_token
     """
-    username = validate_refresh_token_opaque(req.refresh_token)
-    if not username:
+    try:
+        payload = jwt.decode(req.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        
+        if not username or payload.get("type") != "refresh":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido")
+        
+        if req.refresh_token in revoked_tokens:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token fue revocado")
+        
+        user = users_db.get(username)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
+        
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.username, "role": user.role},
+            expires_delta=access_token_expires
+        )
+        
+        refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        new_refresh_token = create_refresh_token(
+            data={"sub": user.username},
+            expires_delta=refresh_token_expires
+        )
+        
+        revoked_tokens.add(req.refresh_token)
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=new_refresh_token,
+            token_type="bearer",
+            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+    except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido o expirado")
-
-    revoke_refresh_token(req.refresh_token)
-
-    user = users_db.get(username)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
-
-    access_token, access_exp = create_access_token_opaque(user.username, user.role)
-    new_refresh_token, refresh_exp = create_refresh_token_opaque(user.username)
-    expires_in = int((access_exp - datetime.utcnow()).total_seconds())
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=new_refresh_token,
-        token_type="bearer",
-        expires_in=expires_in
-    )
-
+ 
 @app.post("/auth/logout", status_code=status.HTTP_200_OK)
 async def logout(req: LogoutRequest):
-    """
-    Logout: revoca refresh token. Opcionalmente se pueden revocar todos los access tokens del usuario.
-    """
-    username = validate_refresh_token_opaque(req.refresh_token)
-    if username:
-        revoke_refresh_token(req.refresh_token)
-        revoke_all_access_tokens_for_user(username)
-    return {"message": "Sesión cerrada (refresh token revocado)"}
-
-items: List[Item] = [
-    Item(id=1, name="Laptop", category="Electrónica", price=1200.0, stock=5),
-    Item(id=2, name="Mouse",  category="Accesorios",  price=25.0,   stock=50),
-]
-
-#
+    """Logout: revoca el refresh_token"""
+    try:
+        payload = jwt.decode(req.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        revoked_tokens.add(req.refresh_token)
+        return {"message": "Sesión cerrada (refresh token revocado)"}
+    except JWTError:
+        return {"message": "Sesión cerrada"}
+ 
 @app.get("/products", status_code=status.HTTP_200_OK)
-async def get_products(current_user: UserInDB = Depends(get_current_user_opaque)):
+async def get_products(current_user: User = Depends(get_current_user)):
+    """Obtiene todos los productos (requiere autenticación)"""
     return items
-
+ 
 @app.get("/products/{id}", status_code=status.HTTP_200_OK)
-async def get_product(id: int, current_user: UserInDB = Depends(get_current_user_opaque)):
+async def get_product(id: int, current_user: User = Depends(get_current_user)):
+    """Obtiene un producto por ID"""
     for item in items:
         if item.id == id:
             return item
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
-
+ 
 @app.post("/products", status_code=status.HTTP_201_CREATED)
-async def create_product(item: Item, current_user: UserInDB = Depends(require_admin)):
+async def create_product(item: Item, current_user: User = Depends(require_admin)):
+    """Crea un producto (requiere ser admin)"""
     if any(i.id == item.id for i in items):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ID ya existe")
     items.append(item)
     return {"message": "Producto creado", "product": item}
-
+ 
 @app.patch("/products/{id}/stock", status_code=status.HTTP_200_OK)
-async def update_stock(id: int, stock: int, current_user: UserInDB = Depends(get_current_user_opaque)):
+async def update_stock(id: int, stock: int, current_user: User = Depends(get_current_user)):
+    """Actualiza el stock de un producto"""
     for item in items:
         if item.id == id:
             if stock < 0:
