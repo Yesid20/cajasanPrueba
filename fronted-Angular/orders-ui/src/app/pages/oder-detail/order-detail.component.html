@@ -1,0 +1,49 @@
+<div class="box">
+
+    <a routerLink="/" class="back">⬅ Volver</a>
+  
+    <div *ngIf="loading" class="loading">
+      Cargando detalle...
+    </div>
+  
+    <div *ngIf="error" class="error">
+      {{ error }}
+    </div>
+  
+    <div *ngIf="order && !loading" class="detail">
+  
+      <h2>Orden #{{ order.id }}</h2>
+  
+      <p><strong>Cliente:</strong> {{ order.customerName }}</p>
+      <p><strong>Total:</strong> ${{ order.total | number }}</p>
+  
+      <p>
+        <strong>Estado actual:</strong>
+        <span [class]="getStatusClass(order.status)">
+          {{ order.status }}
+        </span>
+      </p>
+  
+      <h3>Items</h3>
+      <ul>
+        <li *ngFor="let item of order.items">{{ item }}</li>
+      </ul>
+  
+      <hr />
+  
+      <h3>Cambiar estado</h3>
+  
+      <select [(ngModel)]="selectedStatus" class="select">
+        <option value="PENDING">PENDING</option>
+        <option value="CONFIRMED">CONFIRMED</option>
+        <option value="SHIPPED">SHIPPED</option>
+        <option value="DELIVERED">DELIVERED</option>
+      </select>
+  
+      <button (click)="updateStatus()" class="btn" [disabled]="updating">
+        {{ updating ? 'Actualizando...' : 'Actualizar Estado' }}
+      </button>
+  
+    </div>
+  
+  </div>

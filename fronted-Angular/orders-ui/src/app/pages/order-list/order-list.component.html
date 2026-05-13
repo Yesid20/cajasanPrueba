@@ -1,0 +1,41 @@
+<div class="box">
+
+    <div *ngIf="loading" class="loading">
+      Cargando órdenes...
+    </div>
+  
+    <div *ngIf="error" class="error">
+      {{ error }}
+    </div>
+  
+    <table *ngIf="!loading && !error" class="orders-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Cliente</th>
+          <th>Total</th>
+          <th>Estado</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+  
+      <tbody>
+        <tr *ngFor="let order of orders">
+          <td>{{ order.id }}</td>
+          <td>{{ order.customerName }}</td>
+          <td>${{ order.total | number }}</td>
+          <td>
+            <span [class]="getStatusClass(order.status)">
+              {{ order.status }}
+            </span>
+          </td>
+          <td>
+            <a [routerLink]="['/orders', order.id]" class="btn">
+              Ver detalle
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  
+  </div>

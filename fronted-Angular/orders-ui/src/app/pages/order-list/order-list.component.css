@@ -1,0 +1,70 @@
+.box {
+    background: #f7f7f7;
+    padding: 15px;
+    border-radius: 10px;
+  }
+  
+  .orders-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+  }
+  
+  .orders-table th, .orders-table td {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+  }
+  
+  .orders-table th {
+    background: #222;
+    color: white;
+  }
+  
+  .btn {
+    text-decoration: none;
+    padding: 7px 12px;
+    background: #007bff;
+    color: white;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  
+  .btn:hover {
+    background: #0056b3;
+  }
+  
+  .loading {
+    text-align: center;
+    font-weight: bold;
+  }
+  
+  .error {
+    color: red;
+    font-weight: bold;
+    text-align: center;
+  }
+  
+  .badge {
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+  }
+  
+  .pending {
+    background: orange;
+  }
+  
+  .confirmed {
+    background: blue;
+  }
+  
+  .shipped {
+    background: purple;
+  }
+  
+  .delivered {
+    background: green;
+  }

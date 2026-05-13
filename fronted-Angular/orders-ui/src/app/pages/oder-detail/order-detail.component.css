@@ -1,0 +1,74 @@
+.box {
+    background: #f7f7f7;
+    padding: 15px;
+    border-radius: 10px;
+  }
+  
+  .back {
+    display: inline-block;
+    margin-bottom: 15px;
+    text-decoration: none;
+    color: #007bff;
+    font-weight: bold;
+  }
+  
+  .detail {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+  }
+  
+  .loading {
+    text-align: center;
+    font-weight: bold;
+  }
+  
+  .error {
+    color: red;
+    font-weight: bold;
+    text-align: center;
+  }
+  
+  .select {
+    padding: 8px;
+    margin-right: 10px;
+    border-radius: 6px;
+  }
+  
+  .btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 6px;
+    background: #007bff;
+    color: white;
+    cursor: pointer;
+  }
+  
+  .btn:disabled {
+    background: gray;
+    cursor: not-allowed;
+  }
+  
+  .badge {
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+  }
+  
+  .pending {
+    background: orange;
+  }
+  
+  .confirmed {
+    background: blue;
+  }
+  
+  .shipped {
+    background: purple;
+  }
+  
+  .delivered {
+    background: green;
+  }
